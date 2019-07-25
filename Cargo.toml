@@ -1,0 +1,13 @@
+[package]
+name = "chess-plan-trainer"
+version = "0.1.0"
+authors = ["Antoni Boucher <bouanto@zoho.com>"]
+
+[dependencies]
+#chessground = { git = "https://github.com/antoyo/rust-chessground" }
+chessground = { path = "/home/bouanto/Ordinateur/Programmation/Rust/Projets/rust-chessground" }
+gdk = "0.11.0"
+gtk = "0.7.0"
+relm = "0.17.0"
+relm-derive = "0.17.0"
+shakmaty = "0.14.0"

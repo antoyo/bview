@@ -6,8 +6,13 @@ authors = ["Antoni Boucher <bouanto@zoho.com>"]
 [dependencies]
 #chessground = { git = "https://github.com/antoyo/rust-chessground" }
 chessground = { path = "/home/bouanto/Ordinateur/Programmation/Rust/Projets/rust-chessground" }
+#chess_pgn_parser = "0.1.2"
+encoding_rs = "0.8.17"
+encoding_rs_io = "0.1.6"
 gdk = "0.11.0"
 gtk = "0.7.0"
+pgn-reader = "0.14.0"
 relm = "0.17.0"
 relm-derive = "0.17.0"
 shakmaty = "0.14.0"
+sqlite = "0.25.0"

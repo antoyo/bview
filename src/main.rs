@@ -26,9 +26,11 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use chessground::{
+    ClearShapes,
     DrawBrush,
     DrawShape,
     Ground,
+    GroundMsg,
     SetBoard,
     ShapesChanged,
 };
@@ -74,17 +76,29 @@ use self::Msg::*;
 
 #[derive(Msg)]
 pub enum Msg {
+    Flip,
     ImportPGN,
+    NextExercise,
     Quit,
     ShapesDrawn(Vec<DrawShape>),
+    StartTraining,
     Validate,
 }
 
-pub struct Model {
-    result: String,
-    shapes: Vec<DrawShape>,
+#[derive(Clone)]
+struct TrainingPosition {
+    annotations: Vec<Shape>,
+    position: Board,
 }
 
+pub struct Model {
+    current_position: usize,
+    result: String,
+    shapes: Vec<DrawShape>,
+    training_sets: Vec<TrainingPosition>,
+}
+
+#[derive(Clone)]
 struct Shape {
     orig: Square,
     dest: Square,
@@ -99,20 +113,18 @@ impl PartialEq<DrawShape> for Shape {
 
 #[widget]
 impl Widget for Win {
-    fn init_view(&mut self) {
-        let board = Board::from_str("rnbq1rk1/pp2ppbp/3p1np1/2pP4/4PB2/2N2P2/PPPQ2PP/R3KBNR").expect("board");
-        self.ground.emit(SetBoard(board));
-    }
-
     fn model() -> Model {
         Model {
+            current_position: 0,
             result: String::new(),
             shapes: vec![],
+            training_sets: vec![],
         }
     }
 
     fn update(&mut self, event: Msg) {
         match event {
+            Flip => self.ground.emit(GroundMsg::Flip),
             ImportPGN => {
                 let dialog = FileChooserDialog::with_buttons(
                     Some("Select a PGN file to import"),
@@ -122,7 +134,7 @@ impl Widget for Win {
                 );
                 if dialog.run() == ResponseType::Ok {
                     for filename in dialog.get_filenames() {
-                        if let Err(error) = import_file(&filename) {
+                        if let Err(error) = self.import_file(&filename) {
                             let message_dialog = MessageDialog::new(Some(&self.window), DialogFlags::empty(), MessageType::Error, ButtonsType::Ok, &error);
                             message_dialog.run();
                             message_dialog.destroy();
@@ -131,26 +143,24 @@ impl Widget for Win {
                 }
                 dialog.destroy();
             },
+            NextExercise => {
+                self.model.result = String::new();
+                self.model.current_position += 1;
+                self.show_position();
+            },
             Quit => gtk::main_quit(),
             ShapesDrawn(shapes) => self.model.shapes = shapes,
+            StartTraining => {
+                self.model.current_position = 0;
+                self.show_position();
+            },
             Validate => {
-                let expected_shapes = vec![
-                    Shape {
-                        orig: Square::F4,
-                        dest: Square::H6,
-                        brush: DrawBrush::Yellow,
-                    },
-                    Shape {
-                        orig: Square::E1,
-                        dest: Square::C1,
-                        brush: DrawBrush::Yellow,
-                    },
-                    Shape {
-                        orig: Square::H6,
-                        dest: Square::G7,
-                        brush: DrawBrush::Red,
-                    },
-                ];
+                let training_position =
+                    match self.model.training_sets.get(self.model.current_position) {
+                        Some(training_position) => training_position,
+                        None => return,
+                    };
+                let expected_shapes = &training_position.annotations;
 
                 let mut valid = true;
                 if expected_shapes.len() != self.model.shapes.len() {
@@ -179,8 +189,28 @@ impl Widget for Win {
     }
 
     fn valid(&mut self) {
-        self.model.result = "Valid".to_string();
+        self.model.result = "Valide".to_string();
         self.label.override_color(StateFlags::NORMAL, Some(&RGBA::green()));
+    }
+
+    fn import_file(&mut self, filename: &PathBuf) -> Result<(), String> {
+        let mut file = File::open(filename).map_err(|error| error.to_string())?;
+        let mut data = vec![];
+        file.read_to_end(&mut data).map_err(|error| error.to_string())?;
+        let (result, _, _) = encoding_rs::WINDOWS_1252.decode(&data);
+
+        let mut importer = FENImporter::new();
+        let mut reader = BufferedReader::new_cursor(result.as_bytes());
+        reader.read_all(&mut importer).map_err(|_| "Cannot parse PGN file")?;
+        self.model.training_sets = importer.sets();
+        Ok(())
+    }
+
+    fn show_position(&self) {
+        if let Some(training_position) = self.model.training_sets.get(self.model.current_position) {
+            self.ground.emit(ClearShapes);
+            self.ground.emit(SetBoard(training_position.position.clone()));
+        }
     }
 
     view! {
@@ -197,6 +227,12 @@ impl Widget for Win {
                     gtk::ToolButton {
                         icon_name: Some("media-playback-start"),
                         label: Some("Start training"),
+                        clicked => StartTraining,
+                    },
+                    gtk::ToolButton {
+                        icon_name: Some("object-flip-vertical"),
+                        label: Some("Flip board"),
+                        clicked => Flip,
                     },
                     gtk::ToolButton {
                         icon_name: Some("application-exit"),
@@ -208,9 +244,15 @@ impl Widget for Win {
                 Ground {
                     ShapesChanged(ref shapes) => ShapesDrawn(shapes.clone()),
                 },
-                gtk::Button {
-                    label: "Valider",
-                    clicked => Validate,
+                gtk::ButtonBox {
+                    gtk::Button {
+                        label: "Valider",
+                        clicked => Validate,
+                    },
+                    gtk::Button {
+                        label: "Suivant",
+                        clicked => NextExercise,
+                    },
                 },
                 #[name="label"]
                 gtk::Label {
@@ -222,23 +264,12 @@ impl Widget for Win {
     }
 }
 
-fn import_file(filename: &PathBuf) -> Result<(), String> {
-    let mut file = File::open(filename).map_err(|error| error.to_string())?;
-    let mut data = vec![];
-    file.read_to_end(&mut data).map_err(|error| error.to_string())?;
-    let (result, _, _) = encoding_rs::WINDOWS_1252.decode(&data);
-
-    let mut importer = FENImporter::new();
-    let mut reader = BufferedReader::new_cursor(result.as_bytes());
-    reader.read_all(&mut importer).map_err(|_| "Cannot parse PGN file")?;
-    Ok(())
-}
-
 struct FENImporter {
     current_stack: Vec<Chess>,
     position: Chess,
     previous_position: Chess,
     previous_stack: Vec<Chess>,
+    training_sets: Vec<TrainingPosition>,
 }
 
 impl FENImporter {
@@ -248,7 +279,12 @@ impl FENImporter {
             position: Chess::default(),
             previous_position: Chess::default(),
             previous_stack: vec![],
+            training_sets: vec![],
         }
+    }
+
+    fn sets(&mut self) -> Vec<TrainingPosition> {
+        self.training_sets.clone()
     }
 }
 
@@ -280,8 +316,13 @@ impl Visitor for FENImporter {
     fn comment(&mut self, comment: RawComment) {
         let annotations = parse_annotations(comment.as_bytes());
         if !annotations.is_empty() {
-            println!("FEN: {}", fen(&self.position));
-            println!("{:?}", annotations);
+            let fen = fen(&self.position);
+            let position = fen.split_whitespace().next().expect("fen position");
+            let board = Board::from_str(position).expect("board");
+            self.training_sets.push(TrainingPosition {
+                annotations,
+                position: board,
+            });
         }
     }
 

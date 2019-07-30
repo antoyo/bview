@@ -1,20 +1,9 @@
 use chessground::DrawBrush;
 use shakmaty::Square;
 
-#[derive(Debug)]
-pub enum Annotation {
-    Arrow {
-        color: DrawBrush,
-        from: Square,
-        to: Square,
-    },
-    Square {
-        color: DrawBrush,
-        square: Square,
-    },
-}
+use super::Shape;
 
-pub fn parse_annotations(mut bytes: &[u8]) -> Vec<Annotation> {
+pub(crate) fn parse_annotations(mut bytes: &[u8]) -> Vec<Shape> {
     let mut result = vec![];
 
     loop {
@@ -33,7 +22,7 @@ pub fn parse_annotations(mut bytes: &[u8]) -> Vec<Annotation> {
     }
 }
 
-fn annotations(mut bytes: &[u8]) -> (&[u8], Vec<Annotation>) {
+fn annotations(mut bytes: &[u8]) -> (&[u8], Vec<Shape>) {
     if bytes[0] == b'%' {
         bytes = &bytes[1..];
         if bytes[0] == b'c' {
@@ -50,21 +39,21 @@ fn annotations(mut bytes: &[u8]) -> (&[u8], Vec<Annotation>) {
     (skip_until_annotation_end(bytes), vec![])
 }
 
-fn arrow(mut bytes: &[u8]) -> Option<(&[u8], Annotation)> {
-    let (new_bytes, color) = color(bytes)?;
+fn arrow(mut bytes: &[u8]) -> Option<(&[u8], Shape)> {
+    let (new_bytes, brush) = color(bytes)?;
     bytes = new_bytes;
-    let from = Square::from_ascii(&bytes[..2]).ok()?;
+    let orig = Square::from_ascii(&bytes[..2]).ok()?;
     bytes = &bytes[2..];
-    let to = Square::from_ascii(&bytes[..2]).ok()?;
+    let dest = Square::from_ascii(&bytes[..2]).ok()?;
     bytes = &bytes[2..];
-    Some((bytes, Annotation::Arrow {
-        color,
-        from,
-        to,
+    Some((bytes, Shape {
+        brush,
+        orig,
+        dest,
     }))
 }
 
-fn arrows(mut bytes: &[u8]) -> (&[u8], Vec<Annotation>) {
+fn arrows(mut bytes: &[u8]) -> (&[u8], Vec<Shape>) {
     let mut annotations = vec![];
     if bytes[0] == b'l' {
         bytes = &bytes[1..];
@@ -110,18 +99,19 @@ fn color(bytes: &[u8]) -> Option<(&[u8], DrawBrush)> {
     Some((&bytes[1..], color))
 }
 
-fn square(mut bytes: &[u8]) -> Option<(&[u8], Annotation)> {
-    let (new_bytes, color) = color(bytes)?;
+fn square(mut bytes: &[u8]) -> Option<(&[u8], Shape)> {
+    let (new_bytes, brush) = color(bytes)?;
     bytes = new_bytes;
     let square = Square::from_ascii(&bytes[..2]).ok()?;
     bytes = &bytes[2..];
-    Some((bytes, Annotation::Square {
-        color,
-        square,
+    Some((bytes, Shape {
+        brush,
+        dest: square,
+        orig: square,
     }))
 }
 
-fn squares(mut bytes: &[u8]) -> (&[u8], Vec<Annotation>) {
+fn squares(mut bytes: &[u8]) -> (&[u8], Vec<Shape>) {
     let mut annotations = vec![];
     if bytes[0] == b'l' {
         bytes = &bytes[1..];

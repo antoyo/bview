@@ -17,4 +17,4 @@ shakmaty = "0.16.3"
 sqlite = "0.25.0"
 
 [patch.crates-io]
-shakmaty = { path = "/home/bouanto/Ordinateur/Programmation/Rust/Projets/shakmaty" }
+shakmaty = { git = "https://github.com/antoyo/shakmaty" }
